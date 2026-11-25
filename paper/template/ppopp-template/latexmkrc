@@ -1,0 +1,4 @@
+# latexmk 設定（Overleaf 也會讀取此檔）
+$pdf_mode = 1;          # 使用 pdflatex
+$bibtex_use = 2;
+@default_files = ('main.tex');

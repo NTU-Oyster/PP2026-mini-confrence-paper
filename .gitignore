@@ -1,0 +1,11 @@
+build*/
+*.o
+__pycache__/
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg
+paper/*.out
+paper/*.fls
+paper/*.fdb_latexmk
+paper/ppopp-template.zip

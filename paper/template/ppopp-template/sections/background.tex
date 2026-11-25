@@ -1,0 +1,15 @@
+\section{Background and Motivation}
+\label{sec:background}
+
+\todo{Background needed to make the paper accessible to the broad
+PPoPP audience.}
+
+\subsection{A Motivating Example}
+Listing~\ref{lst:example} shows ...
+
+\begin{lstlisting}[language=C, caption={A simple OpenMP parallel loop.},
+                   label={lst:example}]
+#pragma omp parallel for reduction(+:sum)
+for (int i = 0; i < n; i++)
+    sum += a[i] * b[i];
+\end{lstlisting}
