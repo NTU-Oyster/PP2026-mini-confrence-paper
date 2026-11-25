@@ -20,6 +20,7 @@ struct SearchConfig {
     double ucb_c = 0.25;          // exploration constant, in normalised-reward units
     double virtual_loss = 1.0;    // pessimistic reward charged while a visit is in flight
     uint32_t pool_nodes = 1u << 16;
+    int playouts = 1;             // rollouts per expanded leaf; 1 in every main experiment
 };
 
 struct RootStats {
@@ -51,8 +52,12 @@ struct RootStats {
     }
 };
 
+// PM_NODE_ALIGN=64 is a diagnostic build that gives every node its own cache line.
+#ifndef PM_NODE_ALIGN
+#define PM_NODE_ALIGN 8
+#endif
 template <class P>
-struct Node {
+struct alignas(PM_NODE_ALIGN) Node {
     typename P::template Counter<uint64_t> visits;
     typename P::template Counter<uint32_t> child[kActions];  // pool index, 0 = absent
     [[no_unique_address]] typename P::Aux aux;
@@ -67,7 +72,7 @@ public:
     static constexpr uint32_t kBlock = 64;  // nodes handed to a thread at a time
 
     explicit Tree(const SearchConfig& cfg)
-        : cfg_(cfg), pool_(static_cast<N*>(std::calloc(cfg.pool_nodes, sizeof(N)))) {
+        : cfg_(cfg), pool_(static_cast<N*>(zeroed(cfg.pool_nodes * sizeof(N)))) {
         if (!pool_) std::abort();
         reset();
     }
@@ -126,11 +131,16 @@ public:
             if (expand) break;
         }
 
-        while (!s.terminal()) {  // uniform random rollout
-            const unsigned m = s.legal_mask();
-            s.apply(nth_bit(m, w.rng.below(__builtin_popcount(m))));
+        double r = 0;
+        for (int k = 0; k < cfg_.playouts; ++k) {
+            G t = s;
+            while (!t.terminal()) {  // uniform random rollout
+                const unsigned m = t.legal_mask();
+                t.apply(nth_bit(m, w.rng.below(__builtin_popcount(m))));
+            }
+            r += t.payoff(me);
         }
-        const double r = s.payoff(me);
+        if (cfg_.playouts > 1) r /= cfg_.playouts;
         for (int i = depth; i-- > 0;) path[i]->sum.add(r - loss[i], path[i]->aux, w.c);
     }
 
@@ -153,6 +163,11 @@ public:
     }
 
 private:
+    static void* zeroed(size_t bytes) {
+        void* m = std::aligned_alloc(64, (bytes + 63) & ~size_t{63});
+        if (m) std::memset(m, 0, bytes);
+        return m;
+    }
     struct Free {
         void operator()(N* p) const { std::free(p); }
     };

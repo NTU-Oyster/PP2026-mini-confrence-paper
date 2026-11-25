@@ -205,7 +205,49 @@ static void test_leduc_strength() {
     CHECK(c.mean - c.ci95 > 0);
 }
 
+// River, facing a bet: fold ends at -contrib exactly; call ends at showdown, so its
+// mean must equal the exact equity payoff over the 990 opponent hands.
+static void test_exact_river() {
+    int checked = 0, compared = 0;
+    for (uint64_t seed = 1; seed <= 400 && checked < 25; ++seed) {
+        Hulh s = some_state(seed, 3);
+        s.apply(kRaise);  // the first player bets, so the other one faces a bet
+        const int me = s.player();
+        if (!(s.legal_mask() >> kFold & 1)) continue;
+        ++checked;
+        uint64_t used = 1ULL << s.hole[me][0] | 1ULL << s.hole[me][1];
+        for (auto c : s.board) used |= 1ULL << c;
+        double ev = 0;
+        int n = 0;
+        for (int i = 0; i < 52; ++i)
+            for (int j = i + 1; j < 52; ++j) {
+                if (used >> i & 1 || used >> j & 1) continue;
+                Hulh t = s;
+                t.hole[1 - me][0] = static_cast<uint8_t>(i);
+                t.hole[1 - me][1] = static_cast<uint8_t>(j);
+                t.apply(kCall);
+                CHECK(t.terminal());
+                ev += t.payoff(me);
+                ++n;
+            }
+        CHECK(n == 990);
+        ev /= n;
+        const auto r = tree_run<F64Cas>(s, 200000, 1, seed);
+        CHECK(std::fabs(r.mean(kFold) + s.contrib[me] / Hulh::kMaxPot) < 1e-9);
+        if (r.visits[kCall] > 2000) {
+            ++compared;
+            const double se = (s.contrib[1 - me] / Hulh::kMaxPot) / std::sqrt(static_cast<double>(r.visits[kCall]));
+            if (std::fabs(r.mean(kCall) - ev) > 4 * se)
+                std::printf("river call EV mismatch: exact %.4f search %.4f\n", ev, r.mean(kCall));
+            CHECK(std::fabs(r.mean(kCall) - ev) <= 4 * se);
+        }
+    }
+    std::printf("exact river states checked: %d, call EV compared: %d\n", checked, compared);
+    CHECK(checked >= 10 && compared >= 5);
+}
+
 int main() {
+    test_exact_river();
     test_serial_equivalence();
     test_formats();
     test_parallel();
