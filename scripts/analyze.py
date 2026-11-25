@@ -42,6 +42,14 @@ def scaling():
             cas_retries_per_update=sum(int(r["cas_retries"]) for r in g) / up,
             lock_waits_per_update=sum(int(r["lock_waits"]) for r in g) / up,
             updates_per_iteration=up / sum(int(r["budget"]) for r in g),
+            # Tree searches update a node twice per visit (virtual loss, then result). Formats
+            # and schemes walk paths of different length, so time per visit is the fair
+            # unit when comparing update costs; speedup alone mixes the two effects.
+            visits_per_iteration=up / sum(int(r["budget"]) for r in g)
+            / (1 if s in ("root", "pimc") else 2),
+            ns_per_visit_med=np.median([
+                float(r["wall_time_s"]) * 1e9
+                / (int(r["updates"]) / (1 if s in ("root", "pimc") else 2)) for r in g]),
             nodes_med=np.median([int(r["node_count"]) for r in g]),
             bytes_per_node=g[0]["bytes_per_node"]))
     write_csv("scaling.csv", out)

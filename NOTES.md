@@ -46,6 +46,13 @@
 - gcc 15.2.0、cmake 4.2.3、OpenMP 4.5；`perf_event_paranoid = 4`，`perf stat` 可能無法使用（M4 確認）。
 - 編譯與量測一律在 SEIREN 上透過 Slurm；本機只編輯與畫圖（SEIREN 沒有 numpy/matplotlib）。
 
+## 量測注意事項（M5 期間發現）
+
+- **BF16 的路徑較短**：m = 1、p = 1 每次迭代約 6.2 次收益更新，F64 系列約 8.2–8.7 次（tree 為每次造訪 2 次更新），
+  所以 BF16 p = 1 的「快」是搜尋行為改變造成的混淆。PIMC 同理（約 3.2 次／迭代）。
+  因此 speedup 之外另報 `ns_per_visit`（每次節點造訪的時間）作為同步成本比較的單位。
+- 這些數字來自 `m1_rep0_b0`（25 個狀態、1 個 seed），只作為指標設計依據，正式數字待全部分片完成。
+
 ## 文獻查證（`paper/refs.bib`）
 
 - 清單外的重要相關研究：**Sephton, Cowling, Powley, Whitehouse, Slaven (CEC 2014),
