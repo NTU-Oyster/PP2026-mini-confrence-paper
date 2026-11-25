@@ -46,6 +46,15 @@
 - gcc 15.2.0、cmake 4.2.3、OpenMP 4.5；`perf_event_paranoid = 4`，`perf stat` 可能無法使用（M4 確認）。
 - 編譯與量測一律在 SEIREN 上透過 Slurm；本機只編輯與畫圖（SEIREN 沒有 numpy/matplotlib）。
 
+## 文獻查證（`paper/refs.bib`）
+
+- 清單外的重要相關研究：**Sephton, Cowling, Powley, Whitehouse, Slaven (CEC 2014),
+  *Parallelization of Information Set Monte Carlo Tree Search***。比較 leaf/root/tree/tree+virtual loss 於 ISMCTS
+  （遊戲 Lords of War），二手來源（MCTS 回顧論文）稱 root parallelization 最有效率。
+  → 「平行化 ISMCTS」本身不是新的；新穎點必須限定在**數值格式 × 同步方式 × 爭用強度**。
+  只查到摘要與二手摘要，沒有全文，寫 Related Work 時不可引述其細節數字。
+- 另查到並加入：Mirsoleimani 2017（lock-free 樹 + virtual loss 的分析）、Schweizer 2015（x86 原子操作成本）。
+
 ## 設計決定
 
 - **Hand evaluator 自行撰寫**（`src/game/hand_eval.hpp`），沒有第三方程式碼或查表檔，因此沒有授權問題。
