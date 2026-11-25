@@ -2,6 +2,7 @@
 // ThreadSanitizer build must report races. Guards against a silently inert TSan.
 #include "game/hulh.hpp"
 #include "search/search.hpp"
+#include "util/slurm_guard.hpp"
 int main() {
     pm::Rng rng(1);
     pm::Hulh s = pm::Hulh::deal(rng);

@@ -2,6 +2,7 @@
 # Record hardware and software environment into results/env/. Run inside a Slurm job.
 set -u
 cd "$(dirname "$0")/.."
+source scripts/guard.sh
 mkdir -p results/env
 out=results/env/env_$(date +%Y%m%d_%H%M%S).txt
 {

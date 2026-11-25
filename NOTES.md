@@ -32,6 +32,14 @@
 7. **perf 不能用**（`perf_event_paranoid = 4`，一般使用者無權限），7.2 節的 `perf stat` 無法進行；
    除非助教調整，否則該項改為限制。
 
+### 使用者決定（2026-11-25 第二輪）
+
+- 待決 6 → **採方案 B**（m = 1, 8, 64）。待決 5 → **同意**修改後的準則。
+- 待決 1（核心數）先不處理；待決 2（公開 repo）不用管；待決 7（perf）之後可能換環境再說。
+- 待決 3 → 模板已收到（`paper/template/ppopp-template/`）。注意：它是 **PPoPP 2027** 版，
+  預設不印行號且不允許 appendix；課程要求要有行號，論文階段以課程要求為準並再次確認 appendix。
+- **一切程式只能透過 srun/sbatch 執行**；執行檔與腳本已加 Slurm 防呆（`src/util/slurm_guard.hpp`、`scripts/guard.sh`）。
+
 ## 環境事實（2026-11-25 實測）
 
 - 計算節點：2 socket × 36 core × 2 SMT，Xeon Platinum 8352V，L2 1.25 MB/core，L3 54 MB/socket。
@@ -58,6 +66,20 @@
 - **節點大小**（sizeof）：F64 系列、FIX64、F64_LOCK 都是 32 B，F32 與 BF16 是 24 B（8 B visit + 3 個 4 B 子索引已佔 20 B；
   F64_LOCK 的鎖剛好放進對齊空隙）。所以格式只造成 25% 的節點大小差異，BF16 不比 F32 小。
 - **節點池**：共用一塊 calloc 空間，每個 thread 一次領 64 個節點（bump allocation），CAS 失敗的節點下次重用。
+
+## M5 實驗規模（依校準調整，7.0 節）
+
+- 分片清單：`scripts/worklist.py`，共 155 片，由 `scripts/run_queue.sh` 在 Slurm job 內續跑；
+  全部固定在同一個節點（`-w hitoha`），每片的 load average 與 CPU 綁定記在 `results/raw/queue.log`。
+  節點無法獨佔（帳號單一 job 上限 16 CPU），同節點若有他人 job 會造成雜訊，以 load average 監看。
+- 固定「迭代數」而非「rollout 數」：m 不改變樹更新次數，只改變更新之間的間隔（= 爭用強度）。
+- `rollouts_per_s` = 迭代數 × m / 時間。scaling 的 CSV 另加 `playouts, street, updates, lost_expansions` 欄。
+- RQ3：參考答案 F64_CAS、p = 1、10^7、seed 100–102；測試 seed 0–2。
+  p = 8 的 10^7 因成本只跑 250 個狀態、1 個 seed，其餘為 1000 個狀態、3 個 seed。
+  RQ3 的固定迭代數部分只用 m = 1；固定時間部分（1/10/100 ms）涵蓋 m = 1, 8, 64。
+- **UCB c = 0.25 定案**：4000 對 duplicate、20000 迭代，c = 0.1/0.5/1.0/2.0 對 c = 0.25 為
+  -81 ± 58 / -65 ± 55 / -117 ± 80 / -419 ± 108 mbb/hand（`results/calib_c2.csv`）。
+- PIMC 固定 K = 64 個世界（1–16 thread 的倍數）。
 
 ## 校準結果（2026-11-25，`results/calib.csv`、`results/calib_c.csv`、`results/diag/`）
 

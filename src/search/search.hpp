@@ -12,38 +12,71 @@ inline uint64_t share(uint64_t total, int parts, int i) {
     return total / parts + (static_cast<uint64_t>(i) < total % parts ? 1 : 0);
 }
 
+// A search stops after a fixed number of iterations or, if seconds > 0, at a deadline.
+struct Budget {
+    uint64_t iterations = 0;
+    double seconds = 0;
+    Budget(uint64_t n) : iterations(n) {}
+    static Budget time(double s) {
+        Budget b(0);
+        b.seconds = s;
+        return b;
+    }
+};
+
+// Run one worker's part; returns the number of iterations done.
+template <class Step>
+uint64_t run_part(const Budget& b, uint64_t iterations, double seconds, Step&& step) {
+    if (b.seconds <= 0) {
+        for (uint64_t i = 0; i < iterations; ++i) step();
+        return iterations;
+    }
+    const double end = now_s() + seconds;
+    uint64_t n = 0;
+    do {
+        for (int i = 0; i < 16; ++i) step();
+        n += 16;
+    } while (now_s() < end);
+    return n;
+}
+
 // Sequential ISMCTS. With virtual loss it performs exactly the arithmetic of the
 // one-thread tree-parallel search; without it, it is the true sequential baseline.
 template <class G, bool VirtualLoss = false>
-RootStats serial_search(Tree<G, PlainF64>& tree, const G& s, int me, uint64_t budget,
+RootStats serial_search(Tree<G, PlainF64>& tree, const G& s, int me, Budget budget,
                         uint64_t seed) {
     tree.reset();
     typename Tree<G, PlainF64>::Worker w(seed, 0);
     const double t0 = now_s();
-    for (uint64_t i = 0; i < budget; ++i) tree.template iterate<true, VirtualLoss>(s, me, w);
+    const uint64_t n = run_part(budget, budget.iterations, budget.seconds, [&] {
+        tree.template iterate<true, VirtualLoss>(s, me, w);
+    });
     const double t1 = now_s();
     RootStats r = tree.root_stats();
     r.counters = w.c;
+    r.iterations = n;
     r.wall_s = t1 - t0;
     return r;
 }
 
 // Tree parallelization: p threads share one tree stored in format P.
 template <class G, class P>
-RootStats tree_search(Tree<G, P>& tree, const G& s, int me, uint64_t budget, int p,
+RootStats tree_search(Tree<G, P>& tree, const G& s, int me, Budget budget, int p,
                       uint64_t seed) {
     tree.reset();
     std::vector<Counters> counters(p);
+    std::vector<uint64_t> done(p);
     const double t0 = now_s();
     run_team(p, [&](int tid) {
         typename Tree<G, P>::Worker w(seed, tid);
-        const uint64_t n = share(budget, p, tid);
-        for (uint64_t i = 0; i < n; ++i) tree.template iterate<true, true>(s, me, w);
+        done[tid] = run_part(budget, share(budget.iterations, p, tid), budget.seconds,
+                             [&] { tree.template iterate<true, true>(s, me, w); });
         counters[tid] = w.c;
     });
     const double t1 = now_s();
     RootStats r = tree.root_stats();
     for (auto& c : counters) r.counters += c;
+    for (auto n : done) r.iterations += n;
     r.wall_s = t1 - t0;
     return r;
 }
@@ -64,7 +97,7 @@ private:
 
 // Root parallelization: independent trees, root statistics summed at the end.
 template <class G>
-RootStats root_parallel_search(TreeSet<G>& trees, const G& s, int me, uint64_t budget, int p,
+RootStats root_parallel_search(TreeSet<G>& trees, const G& s, int me, Budget budget, int p,
                                uint64_t seed) {
     std::vector<RootStats> part(p);
     const double t0 = now_s();
@@ -72,9 +105,10 @@ RootStats root_parallel_search(TreeSet<G>& trees, const G& s, int me, uint64_t b
         Tree<G, PlainF64>& tree = trees[tid];
         tree.reset();
         typename Tree<G, PlainF64>::Worker w(seed, tid);
-        const uint64_t n = share(budget, p, tid);
-        for (uint64_t i = 0; i < n; ++i) tree.template iterate<true, false>(s, me, w);
+        const uint64_t n = run_part(budget, share(budget.iterations, p, tid), budget.seconds,
+                                    [&] { tree.template iterate<true, false>(s, me, w); });
         part[tid] = tree.root_stats();
+        part[tid].iterations = n;
         part[tid].counters = w.c;
     });
     RootStats r;
@@ -86,7 +120,7 @@ RootStats root_parallel_search(TreeSet<G>& trees, const G& s, int me, uint64_t b
 // PIMC: K sampled worlds, each searched with perfect-information UCT. World k
 // uses RNG stream k, so the result does not depend on the number of threads.
 template <class G>
-RootStats pimc_search(TreeSet<G>& trees, const G& s, int me, uint64_t budget, int worlds, int p,
+RootStats pimc_search(TreeSet<G>& trees, const G& s, int me, Budget budget, int worlds, int p,
                       uint64_t seed) {
     std::vector<RootStats> part(worlds);
     auto one_world = [&](int k, Tree<G, PlainF64>& tree) {
@@ -94,9 +128,12 @@ RootStats pimc_search(TreeSet<G>& trees, const G& s, int me, uint64_t budget, in
         typename Tree<G, PlainF64>::Worker w(seed, k);
         G world = s;
         world.determinize(me, w.rng);
-        const uint64_t n = share(budget, worlds, k);
-        for (uint64_t i = 0; i < n; ++i) tree.template iterate<false, false>(world, me, w);
+        // Under a deadline each world gets an equal slice of the p * T thread-seconds.
+        const uint64_t n = run_part(budget, share(budget.iterations, worlds, k),
+                                    budget.seconds * p / worlds,
+                                    [&] { tree.template iterate<false, false>(world, me, w); });
         part[k] = tree.root_stats();
+        part[k].iterations = n;
         part[k].counters = w.c;
     };
     const double t0 = now_s();

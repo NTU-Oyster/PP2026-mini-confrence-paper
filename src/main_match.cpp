@@ -2,19 +2,26 @@
 #include <cstdio>
 
 #include "search/agents.hpp"
+#include "search/runner.hpp"
 #include "util/cli.hpp"
+#include "util/slurm_guard.hpp"
 
 using namespace pm;
 
-static std::function<Agent<Hulh>()> make(const std::string& spec, const SearchConfig& cfg) {
+static std::function<Agent<Hulh>()> make(const std::string& spec, const SearchConfig& base) {
     if (spec == "random") return [] { return random_agent<Hulh>(); };
     if (spec == "call") return [] { return call_agent<Hulh>(); };
     if (spec == "rule") return [] { return rule_agent(); };
-    const auto k = spec.find(':');
-    const std::string name = spec.substr(0, k);
-    const auto n = static_cast<uint64_t>(std::stod(spec.substr(k + 1)));
+    // name:iterations[:ucb_c]
+    std::vector<std::string> f;
+    std::istringstream in(spec);
+    for (std::string x; std::getline(in, x, ':');) f.push_back(x);
+    const std::string name = f.at(0);
+    const auto n = static_cast<uint64_t>(std::stod(f.at(1)));
+    SearchConfig cfg = base;
+    if (f.size() > 2) cfg.ucb_c = std::stod(f[2]);
     if (name == "ismcts") return [=] { return ismcts_agent<Hulh>(n, cfg); };
-    if (name == "pimc") return [=] { return pimc_agent<Hulh>(n, kActions * 16, cfg); };
+    if (name == "pimc") return [=] { return pimc_agent<Hulh>(n, kPimcWorlds, cfg); };
     throw std::runtime_error("unknown agent " + spec);
 }
 

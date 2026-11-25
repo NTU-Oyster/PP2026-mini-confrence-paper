@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "util/slurm_guard.hpp"
+
 static int g_checks = 0, g_fails = 0;
 #define CHECK(cond)                                                            \
     do {                                                                       \

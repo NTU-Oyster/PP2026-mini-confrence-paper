@@ -5,6 +5,7 @@
 #include "game/state_io.hpp"
 #include "search/runner.hpp"
 #include "util/cli.hpp"
+#include "util/slurm_guard.hpp"
 
 using namespace pm;
 
@@ -14,6 +15,9 @@ int main(int argc, char** argv) {
     const int count = static_cast<int>(cli.num("count", 100));
     const int rep0 = static_cast<int>(cli.num("rep-begin", 0));
     const int rep1 = static_cast<int>(cli.num("rep-end", 5));
+    // The experiment uses `count` states spread over the set; [sb, se) is one shard.
+    const int sb = static_cast<int>(cli.num("begin", 0));
+    const int se = std::min(count, static_cast<int>(cli.num("end", 1e9)));
     SearchConfig cfg;
     cfg.ucb_c = cli.num("c", cfg.ucb_c);
     cfg.virtual_loss = cli.num("vl", cfg.virtual_loss);
@@ -26,7 +30,8 @@ int main(int argc, char** argv) {
     FILE* out = std::fopen(cli.str("out", "/dev/stdout").c_str(), "w");
     if (!out) return std::perror("out"), 1;
     std::fprintf(out, "scheme,format,threads,budget,state_id,seed,wall_time_s,rollouts_per_s,"
-                      "cas_retries,lock_waits,node_count,bytes_per_node,updates,lost_expansions\n");
+                      "cas_retries,lock_waits,node_count,bytes_per_node,updates,lost_expansions,"
+                      "playouts,street\n");
 
     const int pmax = *std::max_element(threads.begin(), threads.end());
     Runner runner(cfg, pmax);
@@ -41,7 +46,7 @@ int main(int argc, char** argv) {
         runner.run(split(sc).first, split(sc).second, states[0].state, 100000, pmax, 1);
 
     for (int rep = rep0; rep < rep1; ++rep)
-        for (int i = 0; i < count; ++i) {
+        for (int i = sb; i < se; ++i) {
             const auto& d = states[(i * step + i % 4) % states.size()];
             const uint64_t seed = 1000 + static_cast<uint64_t>(rep);
             // Configurations of one state run back to back, so slow drift in clock
@@ -53,12 +58,14 @@ int main(int argc, char** argv) {
                         if (scheme == "serial" && p != threads[0]) continue;
                         const auto budget = static_cast<uint64_t>(std::stod(b));
                         const auto r = runner.run(scheme, format, d.state, budget, p, seed);
-                        std::fprintf(out, "%s,%s,%d,%lu,%d,%lu,%.9f,%.1f,%lu,%lu,%lu,%zu,%lu,%lu\n",
+                        std::fprintf(out, "%s,%s,%d,%lu,%d,%lu,%.9f,%.1f,%lu,%lu,%lu,%zu,%lu,%lu,%d,%d\n",
                                      scheme.c_str(), format.c_str(), scheme == "serial" ? 1 : p,
-                                     budget, d.id, seed, r.wall_s, budget / r.wall_s,
+                                     budget, d.id, seed, r.wall_s, 
+                                     static_cast<double>(budget) * cfg.playouts / r.wall_s,
                                      r.counters.cas_retries, r.counters.lock_waits,
                                      r.counters.nodes, r.bytes_per_node, r.counters.updates,
-                                     r.counters.lost_expansions);
+                                     r.counters.lost_expansions, cfg.playouts,
+                                     int(d.state.street));
                     }
                 }
             std::fflush(out);

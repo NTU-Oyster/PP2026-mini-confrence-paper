@@ -3,6 +3,7 @@
 # Run inside a Slurm job: srun -t 20 -c 16 --mem=16G scripts/run_diag.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/guard.sh
 JOBS=8 ./scripts/build.sh > /dev/null
 cmake -S . -B build-al64 -DNODE_ALIGN=64 > /dev/null
 cmake --build build-al64 -j 8 --target main_bench > /dev/null

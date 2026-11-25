@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <type_traits>
 
@@ -28,6 +29,7 @@ struct RootStats {
     double sum[kActions] = {0, 0, 0};
     Counters counters;
     double wall_s = 0;
+    uint64_t iterations = 0;
     size_t bytes_per_node = 0;
 
     double mean(int a) const { return visits[a] ? sum[a] / static_cast<double>(visits[a]) : 0.0; }
@@ -48,6 +50,7 @@ struct RootStats {
     void merge(const RootStats& o) {
         for (int a = 0; a < kActions; ++a) visits[a] += o.visits[a], sum[a] += o.sum[a];
         counters += o.counters;
+        iterations += o.iterations;
         bytes_per_node = o.bytes_per_node;
     }
 };
@@ -232,7 +235,7 @@ private:
 
     SearchConfig cfg_;
     std::unique_ptr<N[], Free> pool_;
-    std::atomic<uint32_t> next_{kBlock};
+    alignas(64) std::atomic<uint32_t> next_{kBlock};  // apart from the read-mostly fields
 };
 
 }  // namespace pm

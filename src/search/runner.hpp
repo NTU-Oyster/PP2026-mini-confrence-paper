@@ -22,7 +22,7 @@ public:
 
     // scheme: serial | tree | root | pimc; format is used by "tree" only.
     RootStats run(const std::string& scheme, const std::string& format, const Hulh& s,
-                  uint64_t budget, int p, uint64_t seed) {
+                  Budget budget, int p, uint64_t seed) {
         const int me = s.player();
         if (scheme == "serial") return serial_search<Hulh, false>(serial_, s, me, budget, seed);
         if (scheme == "root") return root_parallel_search<Hulh>(own(), s, me, budget, p, seed);

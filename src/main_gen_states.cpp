@@ -5,6 +5,7 @@
 
 #include "game/state_io.hpp"
 #include "util/cli.hpp"
+#include "util/slurm_guard.hpp"
 
 using namespace pm;
 
